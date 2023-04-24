@@ -12,8 +12,11 @@ Sistemas:
 - Local
 - Serv.Aplicação (AL11)
 
-Interface:
-- LIF_ABAP_FILE: Tipos e constantes
+--------------------------------
+
+1) Interface LIF_ABAP_FILE: Tipos e constantes
+
+--------------------------------
 
 1) Classe LCL_ABAP_FILE_FACTORY: Classe Factory
 1.1) Método estático CREATE_FILE_FROM_BINARY: Cria arquivo a partir do binário (SOLIX_TAB)
