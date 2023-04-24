@@ -96,29 +96,6 @@ CLASS lcl_abap_itab DEFINITION.
       END OF ty_fldslist ,
       tt_fldslist TYPE STANDARD TABLE OF ty_fldslist WITH KEY name.
 
-    CLASS-METHODS get_components_from_ddic
-      IMPORTING iv_ddic TYPE tabname
-      EXPORTING et_flds TYPE abap_component_tab
-                et_keys TYPE abap_keydescr_tab
-      RAISING   lcx_abap_itab .
-
-    CLASS-METHODS get_components_from_itab
-      IMPORTING it_itab TYPE ANY TABLE
-      EXPORTING et_flds TYPE abap_component_tab
-                et_keys TYPE abap_keydescr_tab
-      RAISING   lcx_abap_itab .
-
-    CLASS-METHODS get_components_from_list
-      IMPORTING it_list TYPE tt_fldslist
-      EXPORTING et_flds TYPE abap_component_tab
-                et_keys TYPE abap_keydescr_tab
-      RAISING   lcx_abap_itab .
-
-    CLASS-METHODS create_from_itab
-      IMPORTING it_itab        TYPE ANY TABLE
-      RETURNING VALUE(ro_itab) TYPE REF TO lcl_abap_itab
-      RAISING   lcx_abap_itab .
-
     METHODS constructor
       IMPORTING flds TYPE abap_component_tab
                 keys TYPE abap_keydescr_tab
@@ -155,186 +132,35 @@ CLASS lcl_abap_itab DEFINITION.
 
 ENDCLASS.
 
+CLASS lcl_abap_itab_factory DEFINITION.
+
+  PUBLIC SECTION.
+    CLASS-METHODS get_components_from_ddic
+      IMPORTING iv_ddic TYPE tabname
+      EXPORTING et_flds TYPE abap_component_tab
+                et_keys TYPE abap_keydescr_tab
+      RAISING   lcx_abap_itab .
+
+    CLASS-METHODS get_components_from_itab
+      IMPORTING it_itab TYPE ANY TABLE
+      EXPORTING et_flds TYPE abap_component_tab
+                et_keys TYPE abap_keydescr_tab
+      RAISING   lcx_abap_itab .
+
+    CLASS-METHODS get_components_from_list
+      IMPORTING it_list TYPE lcl_abap_itab=>tt_fldslist
+      EXPORTING et_flds TYPE abap_component_tab
+                et_keys TYPE abap_keydescr_tab
+      RAISING   lcx_abap_itab .
+
+    CLASS-METHODS create_from_itab
+      IMPORTING it_itab        TYPE ANY TABLE
+      RETURNING VALUE(ro_itab) TYPE REF TO lcl_abap_itab
+      RAISING   lcx_abap_itab .
+
+ENDCLASS.
+
 CLASS lcl_abap_itab IMPLEMENTATION.
-
-  METHOD get_components_from_ddic.
-
-    DATA:
-      lo_typedescr   TYPE REF TO cl_abap_typedescr,
-      lo_tabledescr  TYPE REF TO cl_abap_tabledescr,
-      lo_structdescr TYPE REF TO cl_abap_structdescr.
-
-    CLEAR: et_flds[], et_keys[].
-
-    cl_abap_typedescr=>describe_by_name(
-      EXPORTING
-        p_name         = iv_ddic
-      RECEIVING
-        p_descr_ref    = lo_typedescr
-      EXCEPTIONS
-        type_not_found = 1
-        OTHERS         = 2
-    ).
-    IF sy-subrc <> 0.
-      "Tipo &1 desconhecido
-      MESSAGE e001(00) INTO DATA(lv_dummy)
-        WITH 'Tipo ' iv_ddic ' desconhecido'.
-      RAISE EXCEPTION TYPE lcx_abap_itab
-        EXPORTING
-          symsg = CORRESPONDING #( sy ).
-    ENDIF.
-
-    CASE lo_typedescr->kind.
-      WHEN cl_abap_typedescr=>kind_struct.
-        "Realiza cast do objeto
-        lo_structdescr ?= lo_typedescr.
-
-        "Recupera chaves
-        DATA(lt_ddic) = lo_structdescr->get_ddic_field_list( ).
-        DELETE lt_ddic WHERE keyflag = abap_false.
-        et_keys[] = CORRESPONDING #( lt_ddic[] MAPPING name = fieldname ).
-
-      WHEN cl_abap_typedescr=>kind_table.
-        "Realiza cast do objeto
-        lo_tabledescr  ?= lo_typedescr.
-
-        "Recupera tipo da linha
-        lo_structdescr ?= lo_tabledescr->get_table_line_type( ).
-
-        "Recupera chaves
-        et_keys[] = lo_tabledescr->key[].
-
-      WHEN OTHERS.
-        "Tipo &1 desconhecido
-        MESSAGE e001(00) INTO lv_dummy
-          WITH 'Tipo ' iv_ddic ' desconhecido'.
-        RAISE EXCEPTION TYPE lcx_abap_itab
-          EXPORTING
-            symsg = CORRESPONDING #( sy ).
-
-    ENDCASE.
-
-    "Recupera campos
-    et_flds[] = lo_structdescr->get_components( ).
-
-    IF et_keys[] IS INITIAL.
-      "Recupera chaves
-      et_keys[] = CORRESPONDING #( et_flds[] MAPPING name = name ).
-    ENDIF.
-
-  ENDMETHOD.
-
-  METHOD get_components_from_itab.
-
-    DATA:
-      lo_tabledescr  TYPE REF TO cl_abap_tabledescr,
-      lo_structdescr TYPE REF TO cl_abap_structdescr.
-
-    CLEAR: et_flds[], et_keys[].
-
-    TRY.
-        "Recupera chaves
-        lo_tabledescr  ?= cl_abap_typedescr=>describe_by_data( it_itab ).
-        et_keys[] = lo_tabledescr->key[].
-
-        "Recupera campos
-        lo_structdescr ?= lo_tabledescr->get_table_line_type( ).
-        et_flds[] = lo_structdescr->get_components( ).
-
-      CATCH cx_root INTO DATA(lx_root) ##CATCH_ALL.
-        RAISE EXCEPTION TYPE lcx_abap_itab
-          EXPORTING
-            previous = lx_root.
-    ENDTRY.
-
-  ENDMETHOD.
-
-  METHOD get_components_from_list.
-
-    DATA:
-      lo_typedescr TYPE REF TO cl_abap_typedescr.
-
-    CLEAR: et_flds[], et_keys[].
-    CHECK it_list[] IS NOT INITIAL.
-
-    DATA(lt_fieldlist) = it_list[].
-    SORT lt_fieldlist BY posn.
-
-    LOOP AT lt_fieldlist[] ASSIGNING FIELD-SYMBOL(<fs_field>).
-      "Insere componente
-      APPEND INITIAL LINE TO et_flds[] ASSIGNING FIELD-SYMBOL(<fs_component>).
-      <fs_component>-name = <fs_field>-name.
-
-      IF <fs_field>-ddic IS NOT INITIAL.
-        CASE <fs_field>-ddic.
-          WHEN 'STRING'.
-            <fs_component>-type  = cl_abap_elemdescr=>get_string( ).
-          WHEN 'XSTRING'.
-            <fs_component>-type  = cl_abap_elemdescr=>get_xstring( ).
-          WHEN OTHERS.
-            "Elemento de dados
-            cl_abap_elemdescr=>describe_by_name(
-              EXPORTING
-                p_name         = <fs_field>-ddic
-              RECEIVING
-                p_descr_ref    = lo_typedescr
-              EXCEPTIONS
-                type_not_found = 1
-                OTHERS         = 2
-            ).
-            IF sy-subrc <> 0.
-              MESSAGE e001(00) INTO DATA(lv_dummy)
-                WITH 'Tipo ' <fs_field>-ddic ' desconhecido'.
-              RAISE EXCEPTION TYPE lcx_abap_itab
-                EXPORTING
-                  symsg = CORRESPONDING #( sy ).
-            ENDIF.
-
-            "Seta tipo do campo
-            <fs_component>-type ?= lo_typedescr.
-        ENDCASE.
-
-      ELSE.
-        "Tipos basicos
-        CASE <fs_field>-predefined-type.
-          WHEN 'C'. <fs_component>-type = cl_abap_elemdescr=>get_c( CONV #( <fs_field>-predefined-leng ) ).
-          WHEN 'D'. <fs_component>-type = cl_abap_elemdescr=>get_d( ).
-          WHEN 'F'. <fs_component>-type = cl_abap_elemdescr=>get_f( ).
-          WHEN 'I'. <fs_component>-type = cl_abap_elemdescr=>get_i( ).
-          WHEN 'N'. <fs_component>-type = cl_abap_elemdescr=>get_n( CONV #( <fs_field>-predefined-leng ) ).
-          WHEN 'P'.
-            <fs_component>-type = cl_abap_elemdescr=>get_p( p_length   = CONV #( <fs_field>-predefined-leng )
-                                                            p_decimals = CONV #( <fs_field>-predefined-deci ) ).
-          WHEN 'T'. <fs_component>-type = cl_abap_elemdescr=>get_t( ).
-          WHEN 'X'. <fs_component>-type = cl_abap_elemdescr=>get_x( CONV #( <fs_field>-predefined-leng ) ).
-          WHEN OTHERS.
-            MESSAGE e001(00) INTO lv_dummy
-              WITH 'Tipo ' <fs_field>-predefined ' desconhecido'.
-            RAISE EXCEPTION TYPE lcx_abap_itab
-              EXPORTING
-                symsg = CORRESPONDING #( sy ).
-        ENDCASE.
-
-      ENDIF.
-
-      IF <fs_field>-ispk = abap_true.
-        APPEND VALUE #( name = <fs_field>-name ) TO et_keys[].
-      ENDIF.
-    ENDLOOP.
-
-  ENDMETHOD.
-
-  METHOD create_from_itab.
-
-    CLEAR ro_itab.
-
-    lcl_abap_itab=>get_components_from_itab( EXPORTING it_itab = it_itab
-                                             IMPORTING et_flds = DATA(lt_flds)
-                                                       et_keys = DATA(lt_keys) ).
-
-    ro_itab = NEW lcl_abap_itab( flds = lt_flds[] keys = lt_keys[] ).
-
-  ENDMETHOD.
 
   METHOD constructor.
 
@@ -560,6 +386,189 @@ CLASS lcl_abap_itab IMPLEMENTATION.
           EXPORTING
             previous = lx_salv_msg.
     ENDTRY.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_abap_itab_factory IMPLEMENTATION.
+
+  METHOD get_components_from_ddic.
+
+    DATA:
+      lo_typedescr   TYPE REF TO cl_abap_typedescr,
+      lo_tabledescr  TYPE REF TO cl_abap_tabledescr,
+      lo_structdescr TYPE REF TO cl_abap_structdescr.
+
+    CLEAR: et_flds[], et_keys[].
+
+    cl_abap_typedescr=>describe_by_name(
+      EXPORTING
+        p_name         = iv_ddic
+      RECEIVING
+        p_descr_ref    = lo_typedescr
+      EXCEPTIONS
+        type_not_found = 1
+        OTHERS         = 2
+    ).
+    IF sy-subrc <> 0.
+      "Tipo &1 desconhecido
+      MESSAGE e001(00) INTO DATA(lv_dummy)
+        WITH 'Tipo ' iv_ddic ' desconhecido'.
+      RAISE EXCEPTION TYPE lcx_abap_itab
+        EXPORTING
+          symsg = CORRESPONDING #( sy ).
+    ENDIF.
+
+    CASE lo_typedescr->kind.
+      WHEN cl_abap_typedescr=>kind_struct.
+        "Realiza cast do objeto
+        lo_structdescr ?= lo_typedescr.
+
+        "Recupera chaves
+        DATA(lt_ddic) = lo_structdescr->get_ddic_field_list( ).
+        DELETE lt_ddic WHERE keyflag = abap_false.
+        et_keys[] = CORRESPONDING #( lt_ddic[] MAPPING name = fieldname ).
+
+      WHEN cl_abap_typedescr=>kind_table.
+        "Realiza cast do objeto
+        lo_tabledescr  ?= lo_typedescr.
+
+        "Recupera tipo da linha
+        lo_structdescr ?= lo_tabledescr->get_table_line_type( ).
+
+        "Recupera chaves
+        et_keys[] = lo_tabledescr->key[].
+
+      WHEN OTHERS.
+        "Tipo &1 desconhecido
+        MESSAGE e001(00) INTO lv_dummy
+          WITH 'Tipo ' iv_ddic ' desconhecido'.
+        RAISE EXCEPTION TYPE lcx_abap_itab
+          EXPORTING
+            symsg = CORRESPONDING #( sy ).
+
+    ENDCASE.
+
+    "Recupera campos
+    et_flds[] = lo_structdescr->get_components( ).
+
+    IF et_keys[] IS INITIAL.
+      "Recupera chaves
+      et_keys[] = CORRESPONDING #( et_flds[] MAPPING name = name ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD get_components_from_itab.
+
+    DATA:
+      lo_tabledescr  TYPE REF TO cl_abap_tabledescr,
+      lo_structdescr TYPE REF TO cl_abap_structdescr.
+
+    CLEAR: et_flds[], et_keys[].
+
+    TRY.
+        "Recupera chaves
+        lo_tabledescr  ?= cl_abap_typedescr=>describe_by_data( it_itab ).
+        et_keys[] = lo_tabledescr->key[].
+
+        "Recupera campos
+        lo_structdescr ?= lo_tabledescr->get_table_line_type( ).
+        et_flds[] = lo_structdescr->get_components( ).
+
+      CATCH cx_root INTO DATA(lx_root) ##CATCH_ALL.
+        RAISE EXCEPTION TYPE lcx_abap_itab
+          EXPORTING
+            previous = lx_root.
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD get_components_from_list.
+
+    DATA:
+      lo_typedescr TYPE REF TO cl_abap_typedescr.
+
+    CLEAR: et_flds[], et_keys[].
+    CHECK it_list[] IS NOT INITIAL.
+
+    DATA(lt_fieldlist) = it_list[].
+    SORT lt_fieldlist BY posn.
+
+    LOOP AT lt_fieldlist[] ASSIGNING FIELD-SYMBOL(<fs_field>).
+      "Insere componente
+      APPEND INITIAL LINE TO et_flds[] ASSIGNING FIELD-SYMBOL(<fs_component>).
+      <fs_component>-name = <fs_field>-name.
+
+      IF <fs_field>-ddic IS NOT INITIAL.
+        CASE <fs_field>-ddic.
+          WHEN 'STRING'.
+            <fs_component>-type  = cl_abap_elemdescr=>get_string( ).
+          WHEN 'XSTRING'.
+            <fs_component>-type  = cl_abap_elemdescr=>get_xstring( ).
+          WHEN OTHERS.
+            "Elemento de dados
+            cl_abap_elemdescr=>describe_by_name(
+              EXPORTING
+                p_name         = <fs_field>-ddic
+              RECEIVING
+                p_descr_ref    = lo_typedescr
+              EXCEPTIONS
+                type_not_found = 1
+                OTHERS         = 2
+            ).
+            IF sy-subrc <> 0.
+              MESSAGE e001(00) INTO DATA(lv_dummy)
+                WITH 'Tipo ' <fs_field>-ddic ' desconhecido'.
+              RAISE EXCEPTION TYPE lcx_abap_itab
+                EXPORTING
+                  symsg = CORRESPONDING #( sy ).
+            ENDIF.
+
+            "Seta tipo do campo
+            <fs_component>-type ?= lo_typedescr.
+        ENDCASE.
+
+      ELSE.
+        "Tipos basicos
+        CASE <fs_field>-predefined-type.
+          WHEN 'C'. <fs_component>-type = cl_abap_elemdescr=>get_c( CONV #( <fs_field>-predefined-leng ) ).
+          WHEN 'D'. <fs_component>-type = cl_abap_elemdescr=>get_d( ).
+          WHEN 'F'. <fs_component>-type = cl_abap_elemdescr=>get_f( ).
+          WHEN 'I'. <fs_component>-type = cl_abap_elemdescr=>get_i( ).
+          WHEN 'N'. <fs_component>-type = cl_abap_elemdescr=>get_n( CONV #( <fs_field>-predefined-leng ) ).
+          WHEN 'P'.
+            <fs_component>-type = cl_abap_elemdescr=>get_p( p_length   = CONV #( <fs_field>-predefined-leng )
+                                                            p_decimals = CONV #( <fs_field>-predefined-deci ) ).
+          WHEN 'T'. <fs_component>-type = cl_abap_elemdescr=>get_t( ).
+          WHEN 'X'. <fs_component>-type = cl_abap_elemdescr=>get_x( CONV #( <fs_field>-predefined-leng ) ).
+          WHEN OTHERS.
+            MESSAGE e001(00) INTO lv_dummy
+              WITH 'Tipo ' <fs_field>-predefined ' desconhecido'.
+            RAISE EXCEPTION TYPE lcx_abap_itab
+              EXPORTING
+                symsg = CORRESPONDING #( sy ).
+        ENDCASE.
+
+      ENDIF.
+
+      IF <fs_field>-ispk = abap_true.
+        APPEND VALUE #( name = <fs_field>-name ) TO et_keys[].
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD create_from_itab.
+
+    CLEAR ro_itab.
+
+    lcl_abap_itab_factory=>get_components_from_itab( EXPORTING it_itab = it_itab
+                                                     IMPORTING et_flds = DATA(lt_flds)
+                                                               et_keys = DATA(lt_keys) ).
+
+    ro_itab = NEW lcl_abap_itab( flds = lt_flds[] keys = lt_keys[] ).
 
   ENDMETHOD.
 
@@ -2324,7 +2333,7 @@ CLASS lcl_abap_file_factory IMPLEMENTATION.
 
         "Seta tabela interna
         lo_fileread->set_itabref(
-          io_itab = lcl_abap_itab=>create_from_itab( et_data[] )
+          io_itab = lcl_abap_itab_factory=>create_from_itab( et_data[] )
         ).
 
         "Seta atributos do arquivo
@@ -2383,7 +2392,7 @@ CLASS lcl_abap_file_factory IMPLEMENTATION.
            OR lv_extension = lif_abap_file=>c_extension-txt.
 
         "Cria tabela interna
-        DATA(lo_itab) = lcl_abap_itab=>create_from_itab( it_data[] ).
+        DATA(lo_itab) = lcl_abap_itab_factory=>create_from_itab( it_data[] ).
 
         "Seta dados na tabela interna
         lo_itab->set_values( it_data[]  ).

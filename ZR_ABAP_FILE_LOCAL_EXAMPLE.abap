@@ -164,7 +164,7 @@ FORM f_read RAISING lcx_abap_file.
         WHEN lif_abap_file=>c_extension-pdf.
         WHEN OTHERS.
           "Busca estrutura da tab interna a partir da tabela interna
-          lcl_abap_itab=>get_components_from_ddic(
+          lcl_abap_itab_factory=>get_components_from_ddic(
             EXPORTING
               iv_ddic = 'BSEGKEY'
             IMPORTING
@@ -280,7 +280,7 @@ FORM f_save RAISING lcx_abap_file.
             INTO TABLE @lt_bsegkey[].
 
           "Busca campos/chaves a partir da tabela interna
-          lcl_abap_itab=>get_components_from_itab(
+          lcl_abap_itab_factory=>get_components_from_itab(
             EXPORTING
               it_itab = lt_bsegkey[]
             IMPORTING
