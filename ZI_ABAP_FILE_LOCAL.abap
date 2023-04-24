@@ -1122,8 +1122,14 @@ CLASS lcl_abap_fileread IMPLEMENTATION.
 
   METHOD display.
 
-    CHECK me->o_itab IS BOUND.
-    me->o_itab->display( ).
+    TRY .
+        CHECK me->o_itab IS BOUND.
+        me->o_itab->display( ).
+      CATCH lcx_abap_itab INTO DATA(lx_itab).
+        RAISE EXCEPTION TYPE lcx_abap_file
+          EXPORTING
+            previous = lx_itab.
+    ENDTRY.
 
   ENDMETHOD.
 
